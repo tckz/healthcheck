@@ -1,0 +1,31 @@
+version: '3'
+
+services:
+  healthy-old-goji:
+    build: ./docker/healthy-old-goji
+    image: healthy-old-goji
+    container_name: healthy-old-goji
+    command: [
+        "/healthy-old-goji", 
+        "--no-goji-access-log",
+    ]
+    restart: always
+    ports:
+     - "3000:8000"
+    #logging:
+    #  driver: none
+  healthy-old-goji2:
+    build: ./docker/healthy-old-goji
+    image: healthy-old-goji
+    container_name: healthy-old-goji2
+    command: [
+        "/healthy-old-goji", 
+        "--no-goji-access-log",
+    ]
+    restart: always
+    ports:
+     - "3001:8000"
+    #logging:
+    #  driver: none
+
+
