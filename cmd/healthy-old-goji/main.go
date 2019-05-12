@@ -39,7 +39,7 @@ func init() {
 }
 
 func main() {
-	noGojiAccessLog := flag.Bool("no-goji-access-log", false, "Disable access log of goji")
+	noGojiAccessLog := flag.Bool("no-access-log", false, "Disable access log of goji")
 	waitSec := flag.Int("wait", 30, "Seconds to sleep before PreHook ended")
 	flag.Parse()
 

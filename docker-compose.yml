@@ -7,7 +7,7 @@ services:
     container_name: healthy-old-goji
     command: [
         "/healthy-old-goji", 
-        "--no-goji-access-log",
+        "--no-access-log",
     ]
     restart: always
     ports:
@@ -20,11 +20,26 @@ services:
     container_name: healthy-old-goji2
     command: [
         "/healthy-old-goji", 
-        "--no-goji-access-log",
+        "--no-access-log",
     ]
     restart: always
     ports:
      - "3001:8000"
+    #logging:
+    #  driver: none
+  healthy-grpc:
+    build: ./docker/healthy-grpc
+    image: healthy-grpc
+    container_name: healthy-grpc
+    command: [
+      "/healthy-grpc",
+    ]
+    restart: always
+    ports:
+      # gRPC
+      - "3002:3000"
+      # health check gw(http -> gRPC)
+      - "3003:3001"
     #logging:
     #  driver: none
 

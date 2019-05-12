@@ -1,5 +1,5 @@
 *.swp
-/results.bin
+/*.bin
 /protoc
 /.idea
 
