@@ -60,6 +60,9 @@ func (s *helloServer) SayHello(ctx context.Context, req *api.HelloRequest) (*api
 		panic("Random panic!!")
 	}
 
+	delay := rand.Intn(300)
+	time.Sleep(time.Duration(delay) * time.Millisecond)
+
 	res := &api.HelloReply{
 		Message: fmt.Sprintf("Hello %s, from %s", req.Name, os.Getenv("HOSTNAME")),
 		Now:     healthcheck.TimestampPB(time.Now()),
@@ -75,18 +78,7 @@ func (s *helloServer) SayMorning(ctx context.Context, req *api.MorningRequest) (
 	return res, nil
 }
 
-func setupHealthCheckGateway(bindHealthCheck *string, healthCheckAddr *string) (*http.Server, context.Context, context.CancelFunc, error) {
-	conn, err := grpc.Dial(*healthCheckAddr,
-		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                10 * time.Second,
-			Timeout:             2 * time.Second,
-			PermitWithoutStream: true,
-		}),
-		grpc.WithInsecure())
-	if err != nil {
-		logger.Fatalf("*** Failed to Dial %s: %v", *healthCheckAddr, err)
-	}
-	defer conn.Close()
+func setupHealthCheckGateway(bindHealthCheck *string, conn *grpc.ClientConn) (*http.Server, context.Context, context.CancelFunc, error) {
 	hcClient := healthpb.NewHealthClient(conn)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -120,7 +112,7 @@ func main() {
 	delay := flag.Duration("delay", 30*time.Second, "Wait duration before shutdown")
 	bind := flag.String("bind", ":3000", "addr:port")
 	bindHealthCheck := flag.String("health-check", ":3001", "addr:port")
-	healthCheckAddr := flag.String("health-check-addr", "127.0.0.1:3000", "addr:port")
+	healthCheckAddr := flag.String("health-check-server", "127.0.0.1:3000", "addr:port")
 	flag.Parse()
 
 	lis, err := net.Listen("tcp", *bind)
@@ -183,11 +175,24 @@ func main() {
 	}()
 	healthServer.SetServingStatus("api.Greeter", healthpb.HealthCheckResponse_SERVING)
 
-	server, ctx, cancel, err := setupHealthCheckGateway(bindHealthCheck, healthCheckAddr)
+	conn, err := grpc.Dial(*healthCheckAddr,
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                10 * time.Second,
+			Timeout:             2 * time.Second,
+			PermitWithoutStream: true,
+		}),
+		grpc.WithInsecure())
+	if err != nil {
+		logger.Fatalf("*** Failed to Dial %s: %v", *healthCheckAddr, err)
+	}
+	defer conn.Close()
+
+	server, ctx, cancel, err := setupHealthCheckGateway(bindHealthCheck, conn)
 	if err != nil {
 		logger.Fatalf("*** Failed to setupHealthCheckGateway: %v", err)
 	}
 	defer cancel()
+
 	logger.Infof("Start to serve HealthCheck gateway: %s", server.Addr)
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"flag"
+	"math/rand"
 	"os"
 	"os/signal"
 	"path"
 	"time"
 
+	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	"github.com/sirupsen/logrus"
 	"github.com/tckz/healthcheck/api"
 	"github.com/tckz/vegetahelper"
@@ -51,21 +53,28 @@ func openOutFile(out string) (*os.File, func()) {
 }
 
 func main() {
+	rand.Seed(time.Now().UnixNano())
+
 	rate := vegeta.Rate{
 		Freq: 10,
 		Per:  1 * time.Second,
 	}
 	duration := flag.Duration("duration", 10*time.Second, "Duration of the test [0 = forever]")
 	flag.Var(&vegetahelper.RateFlag{&rate}, "rate", "Number of requests per time unit")
-	server := flag.String("server", "127.0.0.1:3000", "Server addr:port")
 	output := flag.String("output", "stdout", "Output file")
 	workers := flag.Uint64("workers", vegeta.DefaultWorkers, "Initial number of workers")
+
+	server := flag.String("server", "127.0.0.1:3000", "Server addr:port")
+	retry := flag.Uint("retry", 3, "Max retry")
 	flag.Parse()
 
 	logger.Infof("Server: %s", *server)
 
 	conn, err := grpc.Dial(*server,
 		grpc.WithInsecure(),
+		grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(
+			grpc_retry.WithMax(*retry),
+		)),
 		grpc.WithStatsHandler(&vhgrpc.RpcStatsHandler{}))
 	if err != nil {
 		logger.Fatalf("*** Failed to Dial %s: %v", *server, err)
@@ -78,7 +87,7 @@ func main() {
 
 	atk := vegetahelper.NewAttacker(
 		func(ctx context.Context) (*vegetahelper.HitResult, error) {
-			return vhgrpc.HitGrpc(ctx, func() error {
+			return vhgrpc.HitGrpc(ctx, func(ctx context.Context) error {
 				_, err := client.SayHello(ctx, &api.HelloRequest{
 					Name: "oreore",
 				})
@@ -105,7 +114,7 @@ loop:
 			if !ok {
 				break loop
 			}
-			if err = enc.Encode(r); err != nil {
+			if err := enc.Encode(r); err != nil {
 				logger.Errorf("*** Failed to Encode: %v", err)
 				break loop
 			}

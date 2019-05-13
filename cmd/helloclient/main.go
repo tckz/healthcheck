@@ -4,6 +4,7 @@ import (
 	"flag"
 	"time"
 
+	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	"github.com/sirupsen/logrus"
 	"github.com/tckz/healthcheck/api"
 	"golang.org/x/net/context"
@@ -16,6 +17,7 @@ const (
 
 func main() {
 	timeOutSec := flag.Int("timeout", 3, "Seconds to timeout")
+	retry := flag.Uint("retry", 3, "Max retry")
 	server := flag.String("server", "127.0.0.1:3000", "Server addr:port")
 	flag.Parse()
 
@@ -28,7 +30,11 @@ func main() {
 	})
 	logrus.Infof("Server: %s", *server)
 
-	conn, err := grpc.Dial(*server, grpc.WithInsecure())
+	conn, err := grpc.Dial(*server,
+		grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(
+			grpc_retry.WithMax(*retry),
+		)),
+		grpc.WithInsecure())
 	if err != nil {
 		logrus.Fatalf("*** Failed to Dial %s: %v", *server, err)
 	}
