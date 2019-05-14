@@ -109,6 +109,7 @@ func setupHealthCheckGateway(bindHealthCheck *string, conn *grpc.ClientConn) (*h
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
+	maxConnectionAge := flag.Duration("max-connection-age", 3600*time.Second, "Duration about gRPC connection refresh")
 	delay := flag.Duration("delay", 30*time.Second, "Wait duration before shutdown")
 	bind := flag.String("bind", ":3000", "addr:port")
 	bindHealthCheck := flag.String("health-check", ":3001", "addr:port")
@@ -122,16 +123,17 @@ func main() {
 
 	grpc_logrus.ReplaceGrpcLogger(logger)
 
-	logrusOpts := []grpc_logrus.Option{
-		grpc_logrus.WithDurationField(func(duration time.Duration) (key string, value interface{}) {
-			return "grpc.time_ns", duration.Nanoseconds()
-		}),
-	}
-
 	gs := grpc.NewServer(
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			MaxConnectionAge: *maxConnectionAge,
+			Time:             150 * time.Second,
+		}),
 		grpc_middleware.WithUnaryServerChain(
 			grpc_ctxtags.UnaryServerInterceptor(),
-			grpc_logrus.UnaryServerInterceptor(logger, logrusOpts...),
+			grpc_logrus.UnaryServerInterceptor(logger,
+				grpc_logrus.WithDurationField(func(duration time.Duration) (key string, value interface{}) {
+					return "grpc.time_ns", duration.Nanoseconds()
+				})),
 			func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 				defer func() {
 					if r := recover(); r != nil {
@@ -143,22 +145,6 @@ func main() {
 				}()
 
 				return handler(ctx, req)
-			},
-		),
-		grpc_middleware.WithStreamServerChain(
-			grpc_ctxtags.StreamServerInterceptor(),
-			grpc_logrus.StreamServerInterceptor(logger, logrusOpts...),
-			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-				defer func() {
-					if r := recover(); r != nil {
-						err = status.Errorf(codes.Internal, "%v", r)
-						ctxlogrus.AddFields(ss.Context(), logrus.Fields{
-							"stack": string(debug.Stack()),
-						})
-					}
-				}()
-
-				return handler(srv, ss)
 			},
 		),
 	)
@@ -178,7 +164,6 @@ func main() {
 	conn, err := grpc.Dial(*healthCheckAddr,
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                10 * time.Second,
-			Timeout:             2 * time.Second,
 			PermitWithoutStream: true,
 		}),
 		grpc.WithInsecure())

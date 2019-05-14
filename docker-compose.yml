@@ -7,7 +7,7 @@ services:
     container_name: healthy-old-goji
     command: [
         "/healthy-old-goji", 
-        "--no-access-log",
+        #"--no-access-log",
     ]
     restart: always
     ports:
@@ -20,7 +20,7 @@ services:
     container_name: healthy-old-goji2
     command: [
         "/healthy-old-goji", 
-        "--no-access-log",
+        #"--no-access-log",
     ]
     restart: always
     ports:
@@ -33,6 +33,8 @@ services:
     container_name: healthy-grpc
     command: [
       "/healthy-grpc",
+      # This value is too short, but for checking behavior about transition of gRPC connection.
+      "--max-connection-age", "10s",
     ]
     restart: always
     ports:

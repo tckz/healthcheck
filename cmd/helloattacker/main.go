@@ -16,6 +16,7 @@ import (
 	vhgrpc "github.com/tckz/vegetahelper/grpc"
 	vegeta "github.com/tsenart/vegeta/lib"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 )
 
 var myName string
@@ -71,6 +72,10 @@ func main() {
 	logger.Infof("Server: %s", *server)
 
 	conn, err := grpc.Dial(*server,
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                150 * time.Second,
+			PermitWithoutStream: true,
+		}),
 		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(
 			grpc_retry.WithMax(*retry),
