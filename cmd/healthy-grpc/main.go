@@ -17,7 +17,6 @@ import (
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	"github.com/tckz/healthcheck"
 	"github.com/tckz/healthcheck/api"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -65,7 +64,7 @@ func (s *helloServer) SayHello(ctx context.Context, req *api.HelloRequest) (*api
 
 	res := &api.HelloReply{
 		Message: fmt.Sprintf("Hello %s, from %s", req.Name, os.Getenv("HOSTNAME")),
-		Now:     healthcheck.TimestampPB(time.Now()),
+		Now:     TimestampPB(time.Now()),
 	}
 	return res, nil
 }
@@ -73,7 +72,7 @@ func (s *helloServer) SayHello(ctx context.Context, req *api.HelloRequest) (*api
 func (s *helloServer) SayMorning(ctx context.Context, req *api.MorningRequest) (*api.MorningReply, error) {
 	res := &api.MorningReply{
 		Message: fmt.Sprintf("Morning %s, from %s", req.Name, os.Getenv("HOSTNAME")),
-		Now:     healthcheck.TimestampPB(time.Now()),
+		Now:     TimestampPB(time.Now()),
 	}
 	return res, nil
 }

@@ -12,7 +12,7 @@ import (
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	"github.com/sirupsen/logrus"
 	"github.com/tckz/healthcheck/api"
-	"github.com/tckz/vegetahelper"
+	vh "github.com/tckz/vegetahelper"
 	vhgrpc "github.com/tckz/vegetahelper/grpc"
 	vegeta "github.com/tsenart/vegeta/lib"
 	"google.golang.org/grpc"
@@ -61,7 +61,7 @@ func main() {
 		Per:  1 * time.Second,
 	}
 	duration := flag.Duration("duration", 10*time.Second, "Duration of the test [0 = forever]")
-	flag.Var(&vegetahelper.RateFlag{&rate}, "rate", "Number of requests per time unit")
+	flag.Var(&vh.RateFlag{&rate}, "rate", "Number of requests per time unit")
 	output := flag.String("output", "stdout", "Output file")
 	workers := flag.Uint64("workers", vegeta.DefaultWorkers, "Initial number of workers")
 
@@ -90,8 +90,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	atk := vegetahelper.NewAttacker(
-		func(ctx context.Context) (*vegetahelper.HitResult, error) {
+	atk := vh.NewAttacker(
+		func(ctx context.Context) (*vh.HitResult, error) {
 			return vhgrpc.HitGrpc(ctx, func(ctx context.Context) error {
 				_, err := client.SayHello(ctx, &api.HelloRequest{
 					Name: "oreore",
@@ -99,8 +99,7 @@ func main() {
 				return err
 			})
 		},
-		vegetahelper.WithWorkers(*workers),
-		vegetahelper.WithCancel(cancel))
+		vh.WithWorkers(*workers))
 	res := atk.Attack(ctx, rate, *duration, "hello")
 	out, closer := openOutFile(*output)
 	defer closer()
