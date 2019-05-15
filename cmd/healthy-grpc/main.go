@@ -15,9 +15,14 @@ import (
 	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_logrus "github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	"github.com/sirupsen/logrus"
+	"github.com/tckz/healthcheck"
 	"github.com/tckz/healthcheck/api"
+	"goji.io"
+	"goji.io/pat"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
@@ -25,9 +30,6 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
-
-	grpc_logrus "github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
-	"github.com/sirupsen/logrus"
 )
 
 var myName string
@@ -62,27 +64,61 @@ func (s *helloServer) SayHello(ctx context.Context, req *api.HelloRequest) (*api
 	delay := rand.Intn(300)
 	time.Sleep(time.Duration(delay) * time.Millisecond)
 
+	h, _ := os.Hostname()
 	res := &api.HelloReply{
-		Message: fmt.Sprintf("Hello %s, from %s", req.Name, os.Getenv("HOSTNAME")),
+		Message: fmt.Sprintf("Hello %s, from %s", req.Name, h),
 		Now:     TimestampPB(time.Now()),
 	}
 	return res, nil
 }
 
 func (s *helloServer) SayMorning(ctx context.Context, req *api.MorningRequest) (*api.MorningReply, error) {
+	h, _ := os.Hostname()
 	res := &api.MorningReply{
-		Message: fmt.Sprintf("Morning %s, from %s", req.Name, os.Getenv("HOSTNAME")),
+		Message: fmt.Sprintf("Morning %s, from %s", req.Name, h),
 		Now:     TimestampPB(time.Now()),
 	}
 	return res, nil
 }
 
-func setupHealthCheckGateway(bindHealthCheck *string, conn *grpc.ClientConn) (*http.Server, context.Context, context.CancelFunc, error) {
+func setupHealthCheckGateway(ctx context.Context, bindHealthCheck *string, conn *grpc.ClientConn) *http.Server {
 	hcClient := healthpb.NewHealthClient(conn)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	m := http.NewServeMux()
-	m.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	logger := logger.WithFields(logrus.Fields{
+		"type": "hc",
+	})
+	mux := goji.NewMux()
+	mux.Use(func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(ow http.ResponseWriter, r *http.Request) {
+			begin := time.Now()
+			w := healthcheck.NewResponseWriterWrapper(ow)
+			defer func() {
+				logger := logger
+				if r := recover(); r != nil {
+					logger = logger.WithFields(logrus.Fields{
+						"stack":         string(debug.Stack()),
+						logrus.ErrorKey: r,
+					})
+					w.WriteHeader(http.StatusInternalServerError)
+				}
+
+				dur := time.Since(begin)
+				ms := float64(dur) / float64(time.Millisecond)
+				logger.WithFields(logrus.Fields{
+					"status": w.StatusCode,
+					"method": r.Method,
+					"uri":    r.RequestURI,
+					"remote": r.RemoteAddr,
+					"msec":   ms,
+				}).
+					Infof("done: %s", dur)
+			}()
+
+			h.ServeHTTP(w, r)
+		})
+	})
+
+	mux.HandleFunc(pat.Get("/healthz"), func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-ctx.Done():
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -98,10 +134,10 @@ func setupHealthCheckGateway(bindHealthCheck *string, conn *grpc.ClientConn) (*h
 	})
 	server := &http.Server{
 		Addr:    *bindHealthCheck,
-		Handler: m,
+		Handler: mux,
 	}
 
-	return server, ctx, cancel, nil
+	return server
 
 }
 
@@ -171,7 +207,8 @@ func main() {
 	}
 	defer conn.Close()
 
-	server, ctx, cancel, err := setupHealthCheckGateway(bindHealthCheck, conn)
+	ctx, cancel := context.WithCancel(context.Background())
+	server := setupHealthCheckGateway(ctx, bindHealthCheck, conn)
 	if err != nil {
 		logger.Fatalf("*** Failed to setupHealthCheckGateway: %v", err)
 	}

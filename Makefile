@@ -24,6 +24,9 @@ clean:
 .proto.pb.go:
 	protoc/bin/protoc -I. --proto_path=protoc/include --go_out=plugins=grpc:. $<
 
+go.sum: go.mod
+	go mod download
+
 images: healthy-old-goji healthy-grpc
 	@echo "$@ done."
 
