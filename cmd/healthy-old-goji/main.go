@@ -25,7 +25,6 @@ func init() {
 	myName = path.Base(os.Args[0])
 
 	logrus.SetFormatter(&logrus.JSONFormatter{
-		TimestampFormat: "2006-01-02T15:04:05.000Z07:00",
 		// GKE向けのフィールド名に置換え
 		FieldMap: logrus.FieldMap{
 			logrus.FieldKeyLevel: "severity",
