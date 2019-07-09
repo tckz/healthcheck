@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -22,7 +22,7 @@ var myName string
 var logger *logrus.Entry
 
 func init() {
-	myName = path.Base(os.Args[0])
+	myName = filepath.Base(os.Args[0])
 
 	logrus.SetFormatter(&logrus.JSONFormatter{
 		// GKE向けのフィールド名に置換え

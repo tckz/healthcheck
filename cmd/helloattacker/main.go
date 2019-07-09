@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
-	"path"
+	"path/filepath"
 	"time"
 
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
@@ -23,7 +23,7 @@ var myName string
 var logger *logrus.Entry
 
 func init() {
-	myName = path.Base(os.Args[0])
+	myName = filepath.Base(os.Args[0])
 
 	logrus.SetFormatter(&logrus.JSONFormatter{
 		// GKE向けのフィールド名に置換え

@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
 
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -16,7 +16,7 @@ var myName string
 var logger *logrus.Entry
 
 func init() {
-	myName = path.Base(os.Args[0])
+	myName = filepath.Base(os.Args[0])
 
 	logrus.SetFormatter(&logrus.JSONFormatter{
 		// GKE向けのフィールド名に置換え
