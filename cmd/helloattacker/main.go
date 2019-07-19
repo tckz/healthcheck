@@ -65,6 +65,7 @@ func main() {
 	output := flag.String("output", "stdout", "Output file")
 	workers := flag.Uint64("workers", vegeta.DefaultWorkers, "Initial number of workers")
 
+	keepAlivePeriod := flag.Duration("keepalive-period", 150*time.Second, "Keepalive period of gRPC connection")
 	server := flag.String("server", "127.0.0.1:3000", "Server addr:port")
 	retry := flag.Uint("retry", 3, "Max retry")
 	flag.Parse()
@@ -73,7 +74,7 @@ func main() {
 
 	conn, err := grpc.Dial(*server,
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                150 * time.Second,
+			Time:                *keepAlivePeriod,
 			PermitWithoutStream: true,
 		}),
 		grpc.WithInsecure(),
