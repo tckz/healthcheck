@@ -10,17 +10,17 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime/debug"
 	"syscall"
 	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	grpc_logrus "github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
-	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
+	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	"github.com/sirupsen/logrus"
 	"github.com/tckz/healthcheck"
 	"github.com/tckz/healthcheck/api"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"goji.io"
 	"goji.io/pat"
 	"google.golang.org/grpc"
@@ -32,23 +32,47 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-var myName string
-var logger *logrus.Entry
+var myName = filepath.Base(os.Args[0])
+var logger *zap.SugaredLogger
+
+func initLog() {
+
+	// Until log initialization complete, use default json logger instead of it.
+	zl, err := zap.NewProduction()
+	if err != nil {
+		panic(err)
+	}
+	logger = zl.Sugar().With(zap.String("app", myName))
+
+	encConfig := zap.NewProductionEncoderConfig()
+	encConfig.EncodeTime = func(t time.Time, encoder zapcore.PrimitiveArrayEncoder) {
+		encoder.AppendString(t.Format("2006-01-02T15:04:05.000Z07:00"))
+	}
+
+	zc := zap.Config{
+		DisableCaller: true,
+		Level:         zap.NewAtomicLevelAt(zapcore.InfoLevel),
+		Development:   false,
+		Sampling: &zap.SamplingConfig{
+			Initial:    100,
+			Thereafter: 100,
+		},
+		Encoding:         "json",
+		EncoderConfig:    encConfig,
+		OutputPaths:      []string{"stderr"},
+		ErrorOutputPaths: []string{"stderr"},
+	}
+
+	zl, err = zc.Build()
+	if err != nil {
+		logger.Fatalf("*** Failed to Build: %v", err)
+	}
+
+	logger = zl.Sugar().With(zap.String("app", myName))
+}
 
 func init() {
-	myName = filepath.Base(os.Args[0])
-
-	logrus.SetFormatter(&logrus.JSONFormatter{
-		// GKE向けのフィールド名に置換え
-		FieldMap: logrus.FieldMap{
-			logrus.FieldKeyLevel: "severity",
-			logrus.FieldKeyMsg:   "message",
-		},
-	})
-
-	logger = logrus.WithFields(logrus.Fields{
-		"app": myName,
-	})
+	initLog()
 }
 
 type helloServer struct {
@@ -83,9 +107,7 @@ func (s *helloServer) SayMorning(ctx context.Context, req *api.MorningRequest) (
 func setupHealthCheckGateway(ctx context.Context, bindHealthCheck *string, conn *grpc.ClientConn) *http.Server {
 	hcClient := healthpb.NewHealthClient(conn)
 
-	logger := logger.WithFields(logrus.Fields{
-		"type": "hc",
-	})
+	logger := logger.With(zap.String("type", "hc"))
 	mux := goji.NewMux()
 	mux.Use(func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(ow http.ResponseWriter, r *http.Request) {
@@ -94,22 +116,22 @@ func setupHealthCheckGateway(ctx context.Context, bindHealthCheck *string, conn 
 			defer func() {
 				logger := logger
 				if r := recover(); r != nil {
-					logger = logger.WithFields(logrus.Fields{
-						"stack":         string(debug.Stack()),
-						logrus.ErrorKey: r,
-					})
+					var err error
+					if e, ok := r.(error); !ok {
+						err = fmt.Errorf("panic: %v", e)
+					}
+					logger = logger.With(zap.Stack("stack"), zap.Error(err))
 					w.WriteHeader(http.StatusInternalServerError)
 				}
 
 				dur := time.Since(begin)
 				ms := float64(dur) / float64(time.Millisecond)
-				logger.WithFields(logrus.Fields{
-					"status": w.StatusCode,
-					"method": r.Method,
-					"uri":    r.RequestURI,
-					"remote": r.RemoteAddr,
-					"msec":   ms,
-				}).
+				logger.With(zap.Int("status", w.StatusCode),
+					zap.String("method", r.Method),
+					zap.String("uri", r.RequestURI),
+					zap.String("remote", r.RemoteAddr),
+					zap.Float64("msec", ms),
+				).
 					Infof("done: %s", dur)
 			}()
 
@@ -144,10 +166,13 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 
 	maxConnectionAge := flag.Duration("max-connection-age", 3600*time.Second, "Duration about gRPC connection refresh")
-	delay := flag.Duration("delay", 30*time.Second, "Wait duration before shutdown")
+	keepAlivePeriod := flag.Duration("keepalive-period", 150*time.Second, "Keepalive period of gRPC connection")
+	delay := flag.Duration("delay", 0*time.Second, "Wait duration before shutdown")
 	bind := flag.String("bind", ":3000", "addr:port")
 	bindHealthCheck := flag.String("health-check", ":3001", "addr:port")
 	healthCheckAddr := flag.String("health-check-server", "127.0.0.1:3000", "addr:port")
+	withGrpcLogging := flag.Bool("with-grpc-logging", false, "log gRPC")
+
 	flag.Parse()
 
 	lis, err := net.Listen("tcp", *bind)
@@ -155,26 +180,26 @@ func main() {
 		logger.Fatalf("*** Failed to Listen(): %v", err)
 	}
 
-	grpc_logrus.ReplaceGrpcLogger(logger)
+	if *withGrpcLogging {
+		grpc_zap.ReplaceGrpcLogger(logger.Desugar())
+	}
 
 	gs := grpc.NewServer(
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			MaxConnectionAge: *maxConnectionAge,
-			Time:             150 * time.Second,
+			Time:             *keepAlivePeriod,
 		}),
 		grpc_middleware.WithUnaryServerChain(
 			grpc_ctxtags.UnaryServerInterceptor(),
-			grpc_logrus.UnaryServerInterceptor(logger,
-				grpc_logrus.WithDurationField(func(duration time.Duration) (key string, value interface{}) {
-					return "grpc.time_ns", duration.Nanoseconds()
+			grpc_zap.UnaryServerInterceptor(logger.Desugar(),
+				grpc_zap.WithDurationField(func(duration time.Duration) zapcore.Field {
+					return zap.Int64("grpc.time_ms", duration.Nanoseconds()/1000/1000)
 				})),
 			func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 				defer func() {
 					if r := recover(); r != nil {
 						err = status.Errorf(codes.Internal, "%v", r)
-						ctxlogrus.AddFields(ctx, logrus.Fields{
-							"stack": string(debug.Stack()),
-						})
+						ctxzap.AddFields(ctx, zap.Stack("stack"))
 					}
 				}()
 
