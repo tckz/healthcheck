@@ -3,7 +3,7 @@ healthcheck
 
 # Requirements
 
-* Go 1.12
+* Go 1.20
 * GNU Make
 * Docker
 * Docker Compose
@@ -34,8 +34,6 @@ healthcheck
 
 * Build modules
 ```bash
-# If required
-$ export GO111MODULE=on
 # build
 $ make
 ```

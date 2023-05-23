@@ -14,7 +14,7 @@ import (
 	"github.com/tckz/healthcheck/api"
 	vh "github.com/tckz/vegetahelper"
 	vhgrpc "github.com/tckz/vegetahelper/grpc"
-	vegeta "github.com/tsenart/vegeta/lib"
+	vegeta "github.com/tsenart/vegeta/v12/lib"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 )
