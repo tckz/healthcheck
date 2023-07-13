@@ -16,6 +16,8 @@ import (
 	vhgrpc "github.com/tckz/vegetahelper/grpc"
 	vegeta "github.com/tsenart/vegeta/v12/lib"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 )
 
@@ -67,21 +69,29 @@ func main() {
 
 	keepAlivePeriod := flag.Duration("keepalive-period", 150*time.Second, "Keepalive period of gRPC connection")
 	server := flag.String("server", "127.0.0.1:3000", "Server addr:port")
+	optInsecure := flag.Bool("insecure", false, "Use http instead of https")
 	retry := flag.Uint("retry", 3, "Max retry")
 	flag.Parse()
 
 	logger.Infof("Server: %s", *server)
 
-	conn, err := grpc.Dial(*server,
+	grpcOpts := []grpc.DialOption{
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                *keepAlivePeriod,
 			PermitWithoutStream: true,
 		}),
-		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(
 			grpc_retry.WithMax(*retry),
 		)),
-		grpc.WithStatsHandler(&vhgrpc.RpcStatsHandler{}))
+		grpc.WithStatsHandler(&vhgrpc.RpcStatsHandler{}),
+	}
+	if *optInsecure {
+		grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	} else {
+		grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, "")))
+	}
+
+	conn, err := grpc.Dial(*server, grpcOpts...)
 	if err != nil {
 		logger.Fatalf("*** Failed to Dial %s: %v", *server, err)
 	}

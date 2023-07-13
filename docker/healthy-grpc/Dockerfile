@@ -1,8 +1,4 @@
-FROM alpine:3
-
-RUN set -x && \
-	apk update && \
-	apk add curl
+FROM gcr.io/distroless/static:nonroot
 
 COPY fs /
 

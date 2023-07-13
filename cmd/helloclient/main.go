@@ -9,6 +9,8 @@ import (
 	"github.com/tckz/healthcheck/api"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
@@ -19,6 +21,7 @@ func main() {
 	timeOutSec := flag.Int("timeout", 3, "Seconds to timeout")
 	retry := flag.Uint("retry", 3, "Max retry")
 	server := flag.String("server", "127.0.0.1:3000", "Server addr:port")
+	optInsecure := flag.Bool("insecure", false, "Use http instead of https")
 	flag.Parse()
 
 	logrus.SetFormatter(&logrus.JSONFormatter{
@@ -30,11 +33,17 @@ func main() {
 	})
 	logrus.Infof("Server: %s", *server)
 
-	conn, err := grpc.Dial(*server,
+	grpcOpts := []grpc.DialOption{
 		grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(
 			grpc_retry.WithMax(*retry),
 		)),
-		grpc.WithInsecure())
+	}
+	if *optInsecure {
+		grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	} else {
+		grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, "")))
+	}
+	conn, err := grpc.Dial(*server, grpcOpts...)
 	if err != nil {
 		logrus.Fatalf("*** Failed to Dial %s: %v", *server, err)
 	}
