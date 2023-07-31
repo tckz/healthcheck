@@ -12,55 +12,37 @@ healthcheck
 
 # Before build
 
-* Place protoc command and includes  
-  https://github.com/google/protobuf/releases
-  
-    ```
-    usvc/
-      README.md
-      protoc/  <-- Extract the archive into this dir.
-        bin/
-          protoc
-        include/
-          google/protobuf/*.proto
-    ```
-* Install protoc-gen-go
+* Place protoc command and includes, Install protoc-gen-go, Generate .pb.go
 
     ```bash
-    $ go get -u github.com/golang/protobuf/protoc-gen-go
+    $ make gen
     ```
 
 # Build
 
 * Build modules
-```bash
-# build
-$ make
-```
-
+  ```bash
+  # build
+  $ make
+  ```
 * Build docker images
-```bash
-$ make images
-```
+  ```bash
+  $ make images
+  ```
 
 # Run
 
 * Run servers.
-```bash
-$ docker-compose up
-```
-
+  ```bash
+  $ docker-compose up
+  ```
 * e.g.) Run load test.
-```bash
-$ go run ./cmd/helloattacker/ -server localhost:3002 -duration 3m -rate 100/s > results.bin
-$ vegeta report < results.bin
-```
+  ```bash
+  $ go run ./cmd/helloattacker/ -server localhost:3002 -duration 3m -rate 100/s > results.bin
+  $ vegeta report < results.bin
+  ```
 
 # Modules
-
-## healthy-old-goji
-
-* Web server that using goji which is older version.
 
 ## healthy-grpc
 
@@ -79,8 +61,8 @@ $ vegeta report < results.bin
 
 # My environment
 
-* CentOS 7 x64
-* GNU Make 3.82
-* Go 1.12.5
-* Docker CE 18.09.3
-* Docker Compose 1.23.1
+* CentOS Stream 8 x64
+* GNU Make 4.2.1
+* Go 1.20.6
+* Docker CE 24.0.5
+* Docker Compose 2.20.2
